@@ -152,7 +152,7 @@ class EvaderPursuerEnv(MultiGridEnv):
 
         self.goal = random.choice(self.goals)
 
-        return obs
+        return obs, self.goals, self.agents_start_pos[1]
 
     def _gen_goals(self, num_goals):
         """
