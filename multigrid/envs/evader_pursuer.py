@@ -126,7 +126,7 @@ class EvaderPursuerEnv(MultiGridEnv):
             See :attr:`multigrid.base.MultiGridEnv.__init__`
         """
 
-        self.agents_start_pos = [(size//2, size//2-6), (size//2, size//2)]
+        self.agents_start_pos = [(size//2, size//2-4), (size//2, size//2)]
         self.agents_start_dir = [Direction.down, Direction.down]
 
         self.num_goals = num_goals
@@ -143,16 +143,19 @@ class EvaderPursuerEnv(MultiGridEnv):
             **kwargs,
         )
 
+        self.pursuer = self.agents[0]
+        self.evader = self.agents[1]
+
     def reset(self):
         """
         Reset the environment
         """
 
-        obs = super().reset()
-
+        obs, info = super().reset()
+        obs = self.mod_obs(obs)
         self.goal = random.choice(self.goals)
 
-        return obs
+        return obs, info
 
     def _gen_goals(self, num_goals):
         """
@@ -199,6 +202,20 @@ class EvaderPursuerEnv(MultiGridEnv):
             else:
                 self.place_agent(agent)
 
+    def mod_obs(self, obs):
+        # Pursuer
+        mod_observations = {}
+        mod_observations = [{"fov": obs[0]["image"], "grid": self.grid.state, 
+                             "pos": self.pursuer.pos, "dir": self.pursuer.dir}]
+        if 10 in obs[0]["image"]:
+            mod_observations[0]["evader_pos"] = self.agents[1].pos
+            mod_observations[0]["evader_dir"] = self.agents[1].dir
+
+        # Evader
+        mod_observations.append({"fov": obs[1]["image"], "grid": self.grid.state, 
+                                 "pos": self.evader.pos, "dir": self.evader.dir})
+        return mod_observations
+
     def is_done(self):
         """
         Check if the episode is done
@@ -212,3 +229,12 @@ class EvaderPursuerEnv(MultiGridEnv):
         done = base_done or any(self.agent_states.terminated)
 
         return done
+    
+    def step(self, actions):
+        """
+        :meta private:
+        """
+        observations, rewards, terminations, truncations, infos = super().step(actions)
+        observations = self.mod_obs(observations)
+        
+        return observations, rewards, terminations, truncations, infos
