@@ -199,6 +199,7 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
         self.render_size = None
         self.window = None
         self.clock = None
+        self.font = None
 
         # Other
         self.allow_agent_overlap = allow_agent_overlap
@@ -421,7 +422,7 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
                 fwd_pos = agent.front_pos
                 fwd_obj = self.grid.get(*fwd_pos)
 
-                if fwd_obj is None or fwd_obj.can_overlap():
+                if fwd_obj is None or fwd_obj.can_overlap() or agent.can_overlap:
                     if not self.allow_agent_overlap:
                         agent_present = np.bitwise_and.reduce(
                             self.agent_states.pos == fwd_pos, axis=1).any()
@@ -819,11 +820,12 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
 
             font_size = 22
             text = str(self.mission)
-            font = pygame.freetype.SysFont(pygame.font.get_default_font(), font_size)
-            text_rect = font.get_rect(text, size=font_size)
+            if self.font is None:
+                self.font = pygame.freetype.SysFont(pygame.font.get_default_font(), font_size)
+            text_rect = self.font.get_rect(text, size=font_size)
             text_rect.center = bg.get_rect().center
             text_rect.y = bg.get_height() - font_size * 1.5
-            font.render_to(bg, text_rect, text, size=font_size)
+            self.font.render_to(bg, text_rect, text, size=font_size)
 
             self.window.blit(bg, (0, 0))
             pygame.event.pump()

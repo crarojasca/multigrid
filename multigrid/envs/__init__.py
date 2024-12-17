@@ -34,7 +34,7 @@ from .empty import EmptyEnv
 from .locked_hallway import LockedHallwayEnv
 from .playground import PlaygroundEnv
 from .redbluedoors import RedBlueDoorsEnv
-from .evader_pursuer import EvaderPursuerEnv
+from .evader_pursuer import PursuerEnv
 
 CONFIGURATIONS = {
     'MultiGrid-BlockedUnlockPickup-v0': (BlockedUnlockPickupEnv, {}),

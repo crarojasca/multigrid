@@ -1,13 +1,45 @@
 from __future__ import annotations
 
+
+
 from multigrid import MultiGridEnv
 from multigrid.core import Grid
-from multigrid.core.constants import Direction
+from multigrid.core.constants import Direction, Color
 from multigrid.core.world_object import Goal
 
 import random
+import pygame
 
-class EvaderPursuerEnv(MultiGridEnv):
+class GoalText(Goal):
+    """
+    Goal object an agent may be searching for.
+    """
+
+    def __new__(cls, color: str = Color.green):
+
+        return super().__new__(cls, color=color)
+
+    # def can_overlap(self) -> bool:
+    #     """
+    #     :meta private:
+    #     """
+    #     return True
+
+    def render(self, img):
+        """
+        :meta private:
+        """
+        super().render(img)
+        font_size = 10
+        font = pygame.freetype.SysFont(pygame.font.get_default_font(), font_size)
+        text = 0.0
+        text_rect = font.get_rect(text, size=font_size)
+        text_rect.center = img.get_rect().center
+        text_rect.y = img.get_height() - font_size * 1.5
+        font.render_to(img, text_rect, text, size=font_size)
+        # fill_coords(img, point_in_rect(0, 1, 0, 1), self.color.rgb())
+
+class PursuerEnv(MultiGridEnv):
     """
     .. image:: https://i.imgur.com/wY0tT7R.gif
         :width: 200
@@ -153,8 +185,7 @@ class EvaderPursuerEnv(MultiGridEnv):
 
         obs, info = super().reset()
         obs = self.mod_obs(obs)
-        self.goal = random.choice(self.goals)
-
+        
         return obs, info
 
     def _gen_goals(self, num_goals):
@@ -164,12 +195,18 @@ class EvaderPursuerEnv(MultiGridEnv):
 
         self.goals = []
 
-        for _ in range(num_goals):
+        for i in range(num_goals):
 
-            # random_goal = self.place_obj(Goal())
-            # self.put_obj(Goal(), width - 2, height - 2)
-            pos = self.place_obj(Goal())
+            if i == 0:
+                pos = self.place_obj(Goal(color=Color.blue))
+                self.goal = pos
+            else:
+                pos = self.place_obj(Goal())
+            
             self.goals.append(pos)
+
+        
+        # self.goal.COLOR = Color.blue
 
     def _gen_grid(self, width, height):
         """
@@ -181,13 +218,16 @@ class EvaderPursuerEnv(MultiGridEnv):
         # Generate the surrounding walls
         self.grid.wall_rect(0, 0, width, height)
 
+        self.grid.vert_wall(3, 2, 9)
+        self.grid.vert_wall(6, 2, 9)
+        self.grid.vert_wall(9, 2, 9)
 
-        self.grid.vert_wall(3, 3, 8)
-
-        self.grid.vert_wall(12, 3, 8)
+        self.grid.vert_wall(12, 2, 9)
 
         # self.grid.vert_wall(3, 12, 8)
-        self.grid.horz_wall(3, 12, 8)
+        self.grid.horz_wall(3, 12, 10)
+        self.grid.horz_wall(3, 6, 4)
+        self.grid.horz_wall(9, 6, 4)
 
         self._gen_goals(self.num_goals)
 
@@ -222,11 +262,15 @@ class EvaderPursuerEnv(MultiGridEnv):
         """
 
         base_done = super().is_done()
-
+        
         # evader_done = self.agents[1]["pos"]==self.goal
         # pursuer_done = self.agents[0]["pos"]==self.agents[1]["pos"]
 
-        done = base_done or any(self.agent_states.terminated)
+        # done = base_done or any(self.agent_states.terminated)
+
+        print(self.evader.pos, self.pursuer.pos, self.goal)
+
+        done = self.evader.pos == self.goal or self.agent_states.terminated[0]# self.pursuer.pos == self.goal
 
         return done
     
