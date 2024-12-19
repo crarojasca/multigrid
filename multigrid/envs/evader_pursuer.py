@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from multigrid import MultiGridEnv
 from multigrid.core import Grid
-from multigrid.core.constants import Direction, Color
+from multigrid.core.constants import Direction, Color, IDX_TO_COLOR
 from multigrid.core.world_object import Goal
 
 import random
@@ -178,6 +178,8 @@ class PursuerEnv(MultiGridEnv):
         self.pursuer = self.agents[0]
         self.evader = self.agents[1]
 
+        self.POS2COLOR = {}
+
     def reset(self):
         """
         Reset the environment
@@ -197,12 +199,11 @@ class PursuerEnv(MultiGridEnv):
 
         for i in range(num_goals):
 
+            pos = self.place_obj(Goal(IDX_TO_COLOR[i]))
             if i == 0:
-                pos = self.place_obj(Goal(color=Color.blue))
                 self.goal = pos
-            else:
-                pos = self.place_obj(Goal())
             
+            self.POS2COLOR[pos] = str(IDX_TO_COLOR[i]).split(".")[1]
             self.goals.append(pos)
 
         
@@ -267,8 +268,6 @@ class PursuerEnv(MultiGridEnv):
         # pursuer_done = self.agents[0]["pos"]==self.agents[1]["pos"]
 
         # done = base_done or any(self.agent_states.terminated)
-
-        print(self.evader.pos, self.pursuer.pos, self.goal)
 
         done = self.evader.pos == self.goal or self.agent_states.terminated[0]# self.pursuer.pos == self.goal
 
