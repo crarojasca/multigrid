@@ -1,14 +1,68 @@
 from __future__ import annotations
 
-
-
 from multigrid import MultiGridEnv
 from multigrid.core import Grid
 from multigrid.core.constants import Direction, Color, IDX_TO_COLOR
-from multigrid.core.world_object import Goal
+from multigrid.core.world_object import Goal, Wall
 
 import random
 import pygame
+import numpy as np
+
+DIRECTIONS = [[np.array([1, 0]), np.array([-1, 0]), np.array([0, 1]), np.array([0, -1])],
+              [np.array([-1, 0]), np.array([-1, 1]), np.array([0, 2]), np.array([1, 2]), 
+                np.array([2, 1]), np.array([2, 0]), np.array([0, -1]), np.array([1, -1])
+               ]
+              ]
+
+def get_neighbours(coord, size, cell_size):
+    neighbours = [coord+dir for dir in DIRECTIONS[cell_size-1] 
+                  if np.max(coord+dir) < size and np.min(coord+dir) >= 0]
+    return neighbours
+
+def unfill(grid, coord, size, cell_size):
+    x1 = np.clip(coord[0], 1, size-1)
+    x2 = np.clip(x1+cell_size, 1, size-1)
+    y1 = np.clip(coord[1], 1, size-1)
+    y2 = np.clip(y1+cell_size, 1, size-1)
+    grid[x1:x2, y1:y2] = 0
+    return grid
+
+def generate_base_grid(size, target_pos, cell_size=1):
+
+    grid = np.ones((size, size), dtype=int)
+    grid[target_pos[0]:target_pos[0]+1, target_pos[1]-4:target_pos[1]+4] = 0
+    grid[target_pos[0]-4:target_pos[0]+4, target_pos[1]:target_pos[1]+1] = 0
+
+
+    #Choose 2 random points
+    start = np.random.randint(0, size//cell_size, 2)
+    grid = unfill(grid, start, size, cell_size)
+    explored = {tuple(start): 1}
+    queue = get_neighbours(start, size, cell_size)
+
+    while len(queue)>0:
+        
+        # idx = random.randint(0, len(queue)-1)
+        idx = 3 if len(queue)>3 else 0
+        cell = queue[idx]
+        explored[tuple(cell)] = 1
+        neighbours = get_neighbours(cell, size, cell_size)
+        filled_neighbours = [neighbour for neighbour in neighbours 
+                            if grid[tuple(neighbour)] == 1]
+
+        # The cell doesn't have 2 explored neighbours
+        if ((cell_size==1) and (len(filled_neighbours) > 2) or (cell_size==2) and (len(filled_neighbours) > 2)):
+            # grid[tuple(cell)] = 0
+            grid = unfill(grid, cell, size, cell_size)
+            queue += [neighbour for neighbour in filled_neighbours
+                    if tuple(neighbour) not in explored]
+            
+        queue.pop(idx)
+        # Change the cell size randomly
+        cell_size = random.randint(1, 2) if cell[0]%2==0 and cell[1]%2==0 else 1
+
+    return grid
 
 class GoalText(Goal):
     """
@@ -132,7 +186,10 @@ class PursuerEnv(MultiGridEnv):
 
     def __init__(
         self,
-        size: int = 8,
+        size: int | None = 8,
+        base_grid: np.array | None = None,
+        goals: list[tuple[int, int]] | None = None,
+        target_pos: tuple[int, int] | None = None,
         num_goals: int = 3,
         max_steps: int | None = None,
         joint_reward: bool = False,
@@ -158,15 +215,30 @@ class PursuerEnv(MultiGridEnv):
             See :attr:`multigrid.base.MultiGridEnv.__init__`
         """
 
-        self.agents_start_pos = [(size//2, size//2-4), (size//2, size//2)]
-        self.agents_start_dir = [Direction.down, Direction.down]
+        if base_grid is not None:
+            size = base_grid.shape[0]
+
+        if target_pos is not None:
+            observer_pos = target_pos[0], target_pos[1]-4
+            self.agents_start_pos = [observer_pos, target_pos]
+            self.agents_start_dir = [Direction.down, Direction.down]
+        else:
+            self.agents_start_pos = [(size//2, size//2-4), (size//2, size//2)]
+            self.agents_start_dir = [Direction.down, Direction.down]
+
+        self.base_grid = base_grid
 
         self.num_goals = num_goals
+
         self.goals = []
         self.goal = None
+        if goals is not None:
+            self.goals = goals
+            self.goal = goals[0]
+        
 
         super().__init__(
-            mission_space="intercept the evader before it reaches the goal",
+            mission_space="intercept the target before it reaches the goal",
             grid_size=size,
             agents=2,
             max_steps=max_steps or (4 * size**2),
@@ -175,8 +247,8 @@ class PursuerEnv(MultiGridEnv):
             **kwargs,
         )
 
-        self.pursuer = self.agents[0]
-        self.evader = self.agents[1]
+        self.observer = self.agents[0]
+        self.target = self.agents[1]
 
         self.POS2COLOR = {}
 
@@ -195,16 +267,21 @@ class PursuerEnv(MultiGridEnv):
         Generate a list of goal positions in the grid
         """
 
-        self.goals = []
 
         for i in range(num_goals):
 
-            pos = self.place_obj(Goal(IDX_TO_COLOR[i]))
+            obj = Goal(IDX_TO_COLOR[i])
+            if len(self.goals) == num_goals:
+                pos = self.goals[i]
+                self.grid.set(pos[0], pos[1], obj)
+            else:
+                pos = self.place_obj(obj)
+                self.goals.append(pos)
+
             if i == 0:
                 self.goal = pos
-            
-            self.POS2COLOR[pos] = str(IDX_TO_COLOR[i]).split(".")[1]
-            self.goals.append(pos)
+
+            self.POS2COLOR[pos] = str(IDX_TO_COLOR[i]).split(".")[1]            
 
         
         # self.goal.COLOR = Color.blue
@@ -214,26 +291,16 @@ class PursuerEnv(MultiGridEnv):
         :meta private:
         """
         # Create an empty grid
+        if self.base_grid is None:
+            self.base_grid = generate_base_grid(width, self.agents_start_pos[1])
+            
+        width, height = self.base_grid.shape
         self.grid = Grid(width, height)
 
-        # Generate the surrounding walls
-        self.grid.wall_rect(0, 0, width, height)
-
-        self.grid.vert_wall(3, 2, 9)
-        self.grid.vert_wall(6, 2, 9)
-        self.grid.vert_wall(9, 2, 9)
-
-        self.grid.vert_wall(12, 2, 9)
-
-        # self.grid.vert_wall(3, 12, 8)
-        self.grid.horz_wall(3, 12, 10)
-        self.grid.horz_wall(3, 6, 4)
-        self.grid.horz_wall(9, 6, 4)
+        rows, cols = np.where(self.base_grid==1)
+        self.grid.state[rows, cols] = Wall()
 
         self._gen_goals(self.num_goals)
-
-        # # Place a goal square in the bottom-right corner
-        # self.put_obj(Goal(), width - 2, height - 2)
 
         # Place the agent
         for i, agent in enumerate(self.agents):
@@ -247,14 +314,14 @@ class PursuerEnv(MultiGridEnv):
         # Pursuer
         mod_observations = {}
         mod_observations = [{"fov": obs[0]["image"], "grid": self.grid.state, 
-                             "pos": self.pursuer.pos, "dir": self.pursuer.dir}]
+                             "pos": self.observer.pos, "dir": self.observer.dir}]
         if 10 in obs[0]["image"]:
-            mod_observations[0]["evader_pos"] = self.agents[1].pos
-            mod_observations[0]["evader_dir"] = self.agents[1].dir
+            mod_observations[0]["target_pos"] = self.agents[1].pos
+            mod_observations[0]["target_dir"] = self.agents[1].dir
 
-        # Evader
+        # Target
         mod_observations.append({"fov": obs[1]["image"], "grid": self.grid.state, 
-                                 "pos": self.evader.pos, "dir": self.evader.dir})
+                                 "pos": self.target.pos, "dir": self.target.dir})
         return mod_observations
 
     def is_done(self):
@@ -263,13 +330,7 @@ class PursuerEnv(MultiGridEnv):
         """
 
         base_done = super().is_done()
-        
-        # evader_done = self.agents[1]["pos"]==self.goal
-        # pursuer_done = self.agents[0]["pos"]==self.agents[1]["pos"]
-
-        # done = base_done or any(self.agent_states.terminated)
-
-        done = self.evader.pos == self.goal or self.agent_states.terminated[0]# self.pursuer.pos == self.goal
+        done = self.target.pos == self.goal or self.agent_states.terminated[0]# self.observer.pos == self.goal
 
         return done
     
