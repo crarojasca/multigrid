@@ -28,12 +28,28 @@ def unfill(grid, coord, size, cell_size):
     grid[x1:x2, y1:y2] = 0
     return grid
 
-def generate_base_grid(size, target_pos, cell_size=1):
+def position_agents(grid, init_sep, size):
+    # Search for a random position where all the cells are unfilled in a initial_separation distance
+
+    while True:
+        #  np.where(grid == 0)
+        row, col = np.where(grid == 0)
+        idx = random.randint(0, len(row)-1)
+        x, y = row[idx], col[idx]
+
+        # Check if the col or row is empty
+        if y+init_sep < size and (np.sum(grid[x, y:y+init_sep+1]) == 0):
+            return (x, y+init_sep), (x, y), Direction.up, Direction.down 
+        elif x+init_sep < size and (np.sum(grid[x:x+init_sep+1, y]) == 0):
+            return (x+init_sep, y), (x, y), Direction.left, Direction.down
+        elif y-init_sep >= 0 and (np.sum(grid[x, y-init_sep:y]) == 0):
+            return (x, y-init_sep), (x, y), Direction.right, Direction.down
+        elif x-init_sep >= 0 and (np.sum(grid[x-init_sep:x, y]) == 0):
+            return (x-init_sep, y), (x, y), Direction.down, Direction.down
+
+def generate_base_grid(size, cell_size=1):
 
     grid = np.ones((size, size), dtype=int)
-    grid[target_pos[0]:target_pos[0]+1, target_pos[1]-4:target_pos[1]+4] = 0
-    grid[target_pos[0]-4:target_pos[0]+4, target_pos[1]:target_pos[1]+1] = 0
-
 
     #Choose 2 random points
     start = np.random.randint(0, size//cell_size, 2)
@@ -189,7 +205,6 @@ class PursuerEnv(MultiGridEnv):
         size: int | None = 8,
         base_grid: np.array | None = None,
         goals: list[tuple[int, int]] | None = None,
-        target_pos: tuple[int, int] | None = None,
         num_goals: int = 3,
         max_steps: int | None = None,
         joint_reward: bool = False,
@@ -218,13 +233,16 @@ class PursuerEnv(MultiGridEnv):
         if base_grid is not None:
             size = base_grid.shape[0]
 
-        if target_pos is not None:
-            observer_pos = target_pos[0], target_pos[1]-4
-            self.agents_start_pos = [observer_pos, target_pos]
-            self.agents_start_dir = [Direction.down, Direction.down]
-        else:
-            self.agents_start_pos = [(size//2, size//2-4), (size//2, size//2)]
-            self.agents_start_dir = [Direction.down, Direction.down]
+        # if target_pos is not None:
+        #     observer_pos = target_pos[0], target_pos[1]-4
+        #     self.agents_start_pos = [observer_pos, target_pos]
+        #     self.agents_start_dir = [Direction.down, Direction.down]
+        # else:
+        #     self.agents_start_pos = [(size//2, size//2-4), (size//2, size//2)]
+        #     self.agents_start_dir = [Direction.down, Direction.down]
+
+        self.agents_start_pos = None
+        self.agents_start_dir = None
 
         self.base_grid = base_grid
 
@@ -235,10 +253,9 @@ class PursuerEnv(MultiGridEnv):
         if goals is not None:
             self.goals = goals
             self.goal = goals[0]
-        
 
         super().__init__(
-            mission_space="intercept the target before it reaches the goal",
+            mission_space="Predict the goal and arrive before the target",
             grid_size=size,
             agents=2,
             max_steps=max_steps or (4 * size**2),
@@ -292,7 +309,7 @@ class PursuerEnv(MultiGridEnv):
         """
         # Create an empty grid
         if self.base_grid is None:
-            self.base_grid = generate_base_grid(width, self.agents_start_pos[1])
+            self.base_grid = generate_base_grid(width)
             
         width, height = self.base_grid.shape
         self.grid = Grid(width, height)
@@ -300,15 +317,20 @@ class PursuerEnv(MultiGridEnv):
         rows, cols = np.where(self.base_grid==1)
         self.grid.state[rows, cols] = Wall()
 
-        self._gen_goals(self.num_goals)
-
+        
         # Place the agent
+
+        if self.agents_start_pos is None and self.agents_start_dir is None:
+            observer_pos, target_pos, observer_dir, target_dir = position_agents(self.base_grid, 4, width)
+            self.agents_start_pos = [observer_pos, target_pos]
+            self.agents_start_dir = [observer_dir, target_dir]
+
         for i, agent in enumerate(self.agents):
             if self.agents_start_pos is not None and self.agents_start_dir is not None:
                 agent.state.pos = self.agents_start_pos[i]
                 agent.state.dir = self.agents_start_dir[i]
-            else:
-                self.place_agent(agent)
+
+        self._gen_goals(self.num_goals)
 
     def mod_obs(self, obs):
         # Pursuer
