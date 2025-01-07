@@ -359,7 +359,6 @@ class PursuerEnv(MultiGridEnv):
             self._gen_goals(self.num_goals)
 
         goals_costs = get_cost(self.base_grid, self.goals, self.target.pos)
-        print(goals_costs, self.goals, self.target.pos)
         self.goal = self.goals[np.argmin(goals_costs)]
 
     def mod_obs(self, obs):
