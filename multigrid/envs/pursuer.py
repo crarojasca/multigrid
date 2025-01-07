@@ -28,6 +28,32 @@ def unfill(grid, coord, size, cell_size):
     grid[x1:x2, y1:y2] = 0
     return grid
 
+def get_cost(grid, goals, target_pos):
+
+    costs = []
+    width, height = grid.shape
+
+    for goal in goals:
+        
+        directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        queue = [(tuple(target_pos), 0)]
+        visited = {tuple(target_pos): 1}
+        
+        while len(queue)>0:
+
+            pos, cost = queue.pop(0)
+
+            if pos == goal:
+                costs.append(cost)
+                break
+            for dir in directions:
+                new_pos = tuple(np.array(pos) + np.array(dir))
+
+                if not (new_pos in visited or grid[new_pos] != 0 or new_pos[0] >= width or new_pos[1] >= height or new_pos[0] < 0 or new_pos[1] < 0):
+                    queue.append((new_pos, cost+1))
+                    visited[new_pos] = 1
+    return costs
+
 def position_agents(grid, init_sep, size):
     # Search for a random position where all the cells are unfilled in a initial_separation distance
 
@@ -46,6 +72,7 @@ def position_agents(grid, init_sep, size):
             return (x, y-init_sep), (x, y), Direction.right, Direction.down
         elif x-init_sep >= 0 and (np.sum(grid[x-init_sep:x, y]) == 0):
             return (x-init_sep, y), (x, y), Direction.down, Direction.down
+        
 
 def generate_base_grid(size, cell_size=1):
 
@@ -252,7 +279,6 @@ class PursuerEnv(MultiGridEnv):
         self.goal = None
         if goals is not None:
             self.goals = goals
-            self.goal = goals[0]
 
         super().__init__(
             mission_space="Predict the goal and arrive before the target",
@@ -319,7 +345,6 @@ class PursuerEnv(MultiGridEnv):
 
         
         # Place the agent
-
         if self.agents_start_pos is None and self.agents_start_dir is None:
             observer_pos, target_pos, observer_dir, target_dir = position_agents(self.base_grid, 4, width)
             self.agents_start_pos = [observer_pos, target_pos]
@@ -330,7 +355,12 @@ class PursuerEnv(MultiGridEnv):
                 agent.state.pos = self.agents_start_pos[i]
                 agent.state.dir = self.agents_start_dir[i]
 
-        self._gen_goals(self.num_goals)
+        if not self.goals:
+            self._gen_goals(self.num_goals)
+
+        goals_costs = get_cost(self.base_grid, self.goals, self.target.pos)
+        print(goals_costs, self.goals, self.target.pos)
+        self.goal = self.goals[np.argmin(goals_costs)]
 
     def mod_obs(self, obs):
         # Pursuer
