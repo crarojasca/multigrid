@@ -69,9 +69,9 @@ def position_agents(grid, init_sep, size):
         elif x+init_sep < size and (np.sum(grid[x:x+init_sep+1, y]) == 0):
             return (x+init_sep, y), (x, y), Direction.left, Direction.down
         elif y-init_sep >= 0 and (np.sum(grid[x, y-init_sep:y]) == 0):
-            return (x, y-init_sep), (x, y), Direction.right, Direction.down
+            return (x, y-init_sep), (x, y), Direction.down, Direction.down
         elif x-init_sep >= 0 and (np.sum(grid[x-init_sep:x, y]) == 0):
-            return (x-init_sep, y), (x, y), Direction.down, Direction.down
+            return (x-init_sep, y), (x, y), Direction.right, Direction.down
         
 
 def generate_base_grid(size, cell_size=1):
@@ -136,7 +136,7 @@ class GoalText(Goal):
         font.render_to(img, text_rect, text, size=font_size)
         # fill_coords(img, point_in_rect(0, 1, 0, 1), self.color.rgb())
 
-class PursuerEnv(MultiGridEnv):
+class GREnv(MultiGridEnv):
     """
     .. image:: https://i.imgur.com/wY0tT7R.gif
         :width: 200
