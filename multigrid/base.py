@@ -90,8 +90,8 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
         width: int | None = None,
         height: int | None = None,
         max_steps: int = 100,
-        see_through_walls: bool = False,
-        agent_view_size: int = 7,
+        see_through_walls: list = [False],
+        agent_view_size: list = [7],
         allow_agent_overlap: bool = True,
         joint_reward: bool = False,
         success_termination_mode: Literal['any', 'all'] = 'any',
@@ -163,8 +163,8 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
                 agent = Agent(
                     index=i,
                     mission_space=self.mission_space,
-                    view_size=agent_view_size,
-                    see_through_walls=see_through_walls,
+                    view_size=agent_view_size[i],
+                    see_through_walls=see_through_walls[i],
                 )
                 agent.state = self.agent_states[i]
                 self.agents.append(agent)
@@ -431,7 +431,7 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
 
                     agent.state.pos = fwd_pos
                     if fwd_obj is not None:
-                        if fwd_obj.type == Type.goal:
+                        if self.is_success(fwd_obj, agent):
                             self.on_success(agent, rewards, {})
                         if fwd_obj.type == Type.lava:
                             self.on_failure(agent, rewards, {})
@@ -469,12 +469,18 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
 
             # Done action (not used by default)
             elif action == Action.done:
-                pass
+                if self.is_success(None, agent):
+                    self.on_success(agent, rewards, {})
+                else:
+                    self.on_failure(agent, rewards, {})
 
             else:
                 raise ValueError(f"Unknown action: {action}")
 
         return rewards
+    
+    def is_success(self, fwd_obj, agent):
+        return fwd_obj.type == Type.goal
 
     def on_success(
         self,
@@ -719,33 +725,34 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
         highlight_mask = np.zeros((self.width, self.height), dtype=bool)
 
         for agent in self.agents:
+            if not agent.see_through_walls:
             # Compute the world coordinates of the bottom-left corner
-            # of the agent's view area
-            f_vec = agent.state.dir.to_vec()
-            r_vec = np.array((-f_vec[1], f_vec[0]))
-            top_left = (
-                agent.state.pos
-                + f_vec * (agent.view_size - 1)
-                - r_vec * (agent.view_size // 2)
-            )
+                # of the agent's view area
+                f_vec = agent.state.dir.to_vec()
+                r_vec = np.array((-f_vec[1], f_vec[0]))
+                top_left = (
+                    agent.state.pos
+                    + f_vec * (agent.view_size - 1)
+                    - r_vec * (agent.view_size // 2)
+                )
 
-            # For each cell in the visibility mask
-            for vis_j in range(0, agent.view_size):
-                for vis_i in range(0, agent.view_size):
-                    # If this cell is not visible, don't highlight it
-                    if not vis_masks[agent.index][vis_i, vis_j]:
-                        continue
+                # For each cell in the visibility mask
+                for vis_j in range(0, agent.view_size):
+                    for vis_i in range(0, agent.view_size):
+                        # If this cell is not visible, don't highlight it
+                        if not vis_masks[agent.index][vis_i, vis_j]:
+                            continue
 
-                    # Compute the world coordinates of this cell
-                    abs_i, abs_j = top_left - (f_vec * vis_j) + (r_vec * vis_i)
+                        # Compute the world coordinates of this cell
+                        abs_i, abs_j = top_left - (f_vec * vis_j) + (r_vec * vis_i)
 
-                    if abs_i < 0 or abs_i >= self.width:
-                        continue
-                    if abs_j < 0 or abs_j >= self.height:
-                        continue
+                        if abs_i < 0 or abs_i >= self.width:
+                            continue
+                        if abs_j < 0 or abs_j >= self.height:
+                            continue
 
-                    # Mark this cell to be highlighted
-                    highlight_mask[abs_i, abs_j] = True
+                        # Mark this cell to be highlighted
+                        highlight_mask[abs_i, abs_j] = True
 
         # Render the whole grid
         img = self.grid.render(

@@ -8,9 +8,7 @@ from ..core.world_object import Wall, WorldObj
 from numpy.typing import NDArray as ndarray
 
 
-
 ### Constants
-
 WALL_ENCODING = Wall().encode()
 UNSEEN_ENCODING = WorldObj(Type.unseen, Color.from_index(0)).encode()
 ENCODE_DIM = WorldObj.dim
@@ -42,7 +40,6 @@ DOWN = int(Direction.down)
 
 
 ### Observation Functions
-
 @nb.njit(cache=True)
 def see_behind(world_obj: ndarray[np.int_]) -> bool:
     """
@@ -62,7 +59,7 @@ def see_behind(world_obj: ndarray[np.int_]) -> bool:
 
     return True
 
-@nb.njit(cache=True)
+# @nb.njit(cache=True)
 def gen_obs_grid_encoding(
     grid_state: ndarray[np.int_],
     agent_state: ndarray[np.int_],
@@ -232,7 +229,46 @@ def get_see_behind_mask(grid_array: ndarray[np.int_]) -> ndarray[np.int_]:
 
     return see_behind_mask
 
-@nb.njit(cache=True)
+# @nb.njit(cache=True)
+def visibleFromCentroid(agent_pos, coord, see_behind_mask):
+    # Bresenham’s Algorithm
+    see_behind_mask = (~see_behind_mask.astype(bool)).astype(int)
+    width, height = see_behind_mask.shape[:2]
+    xmin = min(agent_pos[0], coord[0])
+    xmax = max(agent_pos[0], coord[0])
+    step = 0.05
+
+    if (agent_pos[0] - coord[0])!=0: 
+        m = (agent_pos[1] - coord[1]) / (agent_pos[0] - coord[0]) 
+        c = agent_pos[1] - m*agent_pos[0]
+
+        x = np.arange(xmin, xmax+step, step)
+        y = m*x + c
+
+
+    else:
+        ymin = min(agent_pos[1], coord[1])
+        ymax = max(agent_pos[1], coord[1])
+        y = np.arange(ymin, ymax+step, step)
+        x = np.zeros(y.shape[0]) + agent_pos[0]
+
+    rows = tuple(np.round(x).astype(int).clip(0, width-1))
+    cols = tuple(np.round(y).astype(int).clip(0, width-1))
+
+    rows, cols = tuple(zip(*set(zip(rows, cols))))
+
+    # print(coord)
+    # print(x, y)
+    # print(rows, cols)
+    # print(see_behind_mask[rows, cols])
+    
+
+    if sum(see_behind_mask[rows, cols]) == 0:
+        return True
+
+    return False
+
+# @nb.njit(cache=True)
 def get_vis_mask(obs_grid: ndarray[np.int_]) -> ndarray[np.bool_]:
     """
     Generate a boolean mask indicating which grid locations are visible to each agent.
@@ -252,24 +288,40 @@ def get_vis_mask(obs_grid: ndarray[np.int_]) -> ndarray[np.bool_]:
     vis_mask = np.zeros((num_agents, width, height), dtype=np.bool_)
     vis_mask[:, width // 2, height - 1] = True # agent relative position
 
+    agent_pos = (width // 2, height - 1)
+    # print(agent_pos)
     for agent in range(num_agents):
-        for j in range(height - 1, -1, -1):
+        for j in range(height):
             # Forward pass
-            for i in range(0, width - 1):
-                if vis_mask[agent, i, j] and see_behind_mask[agent, i, j]:
-                    vis_mask[agent, i + 1, j] = True
-                    if j > 0:
-                        vis_mask[agent, i + 1, j - 1] = True
-                        vis_mask[agent, i, j - 1] = True
+            for i in range(width):
+                coord = (i, j)
+                vis_mask[agent, i, j] = visibleFromCentroid(
+                    agent_pos, coord, see_behind_mask[agent, :, :])
 
-            # Backward pass
-            for i in range(width - 1, 0, -1):
-                if vis_mask[agent, i, j] and see_behind_mask[agent, i, j]:
-                    vis_mask[agent, i - 1, j] = True
-                    if j > 0:
-                        vis_mask[agent, i - 1, j - 1] = True
-                        vis_mask[agent, i, j - 1] = True
+        # print(see_behind_mask[agent, :, :])
+        # print(vis_mask[agent, :, :])
 
+        # for j in range(height - 1, -1, -1):
+        #     # Forward pass
+        #     for i in range(0, width - 1):
+        #         coord = (i, j)
+        #         vis_mask[agent, i, j] = visibleFromCentroid(
+        #             agent_pos, coord, see_behind_mask[agent, :, :])
+
+            #     if vis_mask[agent, i, j] and see_behind_mask[agent, i, j]:
+            #         vis_mask[agent, i + 1, j] = True
+            #         if j > 0:
+            #             vis_mask[agent, i + 1, j - 1] = True
+            #             vis_mask[agent, i, j - 1] = True
+
+            # # Backward pass
+            # for i in range(width - 1, 0, -1):
+            #     if vis_mask[agent, i, j] and see_behind_mask[agent, i, j]:
+            #         vis_mask[agent, i - 1, j] = True
+            #         if j > 0:
+            #             vis_mask[agent, i - 1, j - 1] = True
+            #             vis_mask[agent, i, j - 1] = True
+    # print()
     return vis_mask
 
 @nb.njit(cache=True)

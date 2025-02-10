@@ -18,8 +18,6 @@ from ..utils.rendering import (
     point_in_rect,
 )
 
-
-
 class Grid:
     """
     Class representing a grid of :class:`.WorldObj` objects.

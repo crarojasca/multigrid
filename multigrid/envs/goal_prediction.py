@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from multigrid import MultiGridEnv
 from multigrid.core import Grid
-from multigrid.core.constants import Direction, Color, IDX_TO_COLOR
+from multigrid.core.agent import Agent
+from multigrid.core.constants import Direction, Color, IDX_TO_COLOR, Type
 from multigrid.core.world_object import Goal, Wall
+
+from typing import SupportsFloat
 
 import random
 import pygame
@@ -20,15 +23,7 @@ def get_neighbours(coord, size, cell_size):
                   if np.max(coord+dir) < size and np.min(coord+dir) >= 0]
     return neighbours
 
-def unfill(grid, coord, size, cell_size):
-    x1 = np.clip(coord[0], 1, size-1)
-    x2 = np.clip(x1+cell_size, 1, size-1)
-    y1 = np.clip(coord[1], 1, size-1)
-    y2 = np.clip(y1+cell_size, 1, size-1)
-    grid[x1:x2, y1:y2] = 0
-    return grid
-
-def get_cost(grid, goals, target_pos):
+def get_cost(grid, goals, target_pos, hidden_cost):
 
     costs = []
     width, height = grid.shape
@@ -50,91 +45,15 @@ def get_cost(grid, goals, target_pos):
                 new_pos = tuple(np.array(pos) + np.array(dir))
 
                 if not (new_pos in visited or grid[new_pos] != 0 or new_pos[0] >= width or new_pos[1] >= height or new_pos[0] < 0 or new_pos[1] < 0):
-                    queue.append((new_pos, cost+1))
+                    new_cost = cost + 1 + hidden_cost[new_pos]
+                    queue.append((new_pos, new_cost))
                     visited[new_pos] = 1
     return costs
 
-def position_agents(grid, init_sep, size):
-    # Search for a random position where all the cells are unfilled in a initial_separation distance
 
-    while True:
-        #  np.where(grid == 0)
-        row, col = np.where(grid == 0)
-        idx = random.randint(0, len(row)-1)
-        x, y = row[idx], col[idx]
-
-        # Check if the col or row is empty
-        if y+init_sep < size and (np.sum(grid[x, y:y+init_sep+1]) == 0):
-            return (x, y+init_sep), (x, y), Direction.up, Direction.down 
-        elif x+init_sep < size and (np.sum(grid[x:x+init_sep+1, y]) == 0):
-            return (x+init_sep, y), (x, y), Direction.left, Direction.down
-        elif y-init_sep >= 0 and (np.sum(grid[x, y-init_sep:y]) == 0):
-            return (x, y-init_sep), (x, y), Direction.down, Direction.down
-        elif x-init_sep >= 0 and (np.sum(grid[x-init_sep:x, y]) == 0):
-            return (x-init_sep, y), (x, y), Direction.right, Direction.down
         
 
-def generate_base_grid(size, cell_size=1):
 
-    grid = np.ones((size, size), dtype=int)
-
-    #Choose 2 random points
-    start = np.random.randint(0, size//cell_size, 2)
-    grid = unfill(grid, start, size, cell_size)
-    explored = {tuple(start): 1}
-    queue = get_neighbours(start, size, cell_size)
-
-    while len(queue)>0:
-        
-        # idx = random.randint(0, len(queue)-1)
-        idx = 3 if len(queue)>3 else 0
-        cell = queue[idx]
-        explored[tuple(cell)] = 1
-        neighbours = get_neighbours(cell, size, cell_size)
-        filled_neighbours = [neighbour for neighbour in neighbours 
-                            if grid[tuple(neighbour)] == 1]
-
-        # The cell doesn't have 2 explored neighbours
-        if ((cell_size==1) and (len(filled_neighbours) > 2) or (cell_size==2) and (len(filled_neighbours) > 2)):
-            # grid[tuple(cell)] = 0
-            grid = unfill(grid, cell, size, cell_size)
-            queue += [neighbour for neighbour in filled_neighbours
-                    if tuple(neighbour) not in explored]
-            
-        queue.pop(idx)
-        # Change the cell size randomly
-        cell_size = random.randint(1, 2) if cell[0]%2==0 and cell[1]%2==0 else 1
-
-    return grid
-
-class GoalText(Goal):
-    """
-    Goal object an agent may be searching for.
-    """
-
-    def __new__(cls, color: str = Color.green):
-
-        return super().__new__(cls, color=color)
-
-    # def can_overlap(self) -> bool:
-    #     """
-    #     :meta private:
-    #     """
-    #     return True
-
-    def render(self, img):
-        """
-        :meta private:
-        """
-        super().render(img)
-        font_size = 10
-        font = pygame.freetype.SysFont(pygame.font.get_default_font(), font_size)
-        text = 0.0
-        text_rect = font.get_rect(text, size=font_size)
-        text_rect.center = img.get_rect().center
-        text_rect.y = img.get_height() - font_size * 1.5
-        font.render_to(img, text_rect, text, size=font_size)
-        # fill_coords(img, point_in_rect(0, 1, 0, 1), self.color.rgb())
 
 class GREnv(MultiGridEnv):
     """
@@ -236,6 +155,7 @@ class GREnv(MultiGridEnv):
         max_steps: int | None = None,
         joint_reward: bool = False,
         success_termination_mode: str = 'any',
+        hidden_cost=None, enable_hidden_cost=False,
         **kwargs):
         """
         Parameters
@@ -260,20 +180,18 @@ class GREnv(MultiGridEnv):
         if base_grid is not None:
             size = base_grid.shape[0]
 
-        # if target_pos is not None:
-        #     observer_pos = target_pos[0], target_pos[1]-4
-        #     self.agents_start_pos = [observer_pos, target_pos]
-        #     self.agents_start_dir = [Direction.down, Direction.down]
-        # else:
-        #     self.agents_start_pos = [(size//2, size//2-4), (size//2, size//2)]
-        #     self.agents_start_dir = [Direction.down, Direction.down]
-
         self.agents_start_pos = None
         self.agents_start_dir = None
-
         self.base_grid = base_grid
-
         self.num_goals = num_goals
+
+        self.enable_hidden_cost = enable_hidden_cost
+        if self.enable_hidden_cost and hidden_cost is None:
+            self.hidden_cost = (np.random.random((size, size)) > 0.5).astype(int)
+        elif self.enable_hidden_cost and hidden_cost is not None:
+            self.hidden_cost = hidden_cost
+        else:
+            self.hidden_cost = np.zeros((size, size))
 
         self.goals = []
         self.goal = None
@@ -309,8 +227,6 @@ class GREnv(MultiGridEnv):
         """
         Generate a list of goal positions in the grid
         """
-
-
         for i in range(num_goals):
 
             obj = Goal(IDX_TO_COLOR[i])
@@ -321,13 +237,71 @@ class GREnv(MultiGridEnv):
                 pos = self.place_obj(obj)
                 self.goals.append(pos)
 
-            if i == 0:
-                self.goal = pos
+            self.POS2COLOR[pos] = str(IDX_TO_COLOR[i]).split(".")[1]  
 
-            self.POS2COLOR[pos] = str(IDX_TO_COLOR[i]).split(".")[1]            
+        goals_costs = get_cost(self.base_grid, self.goals, self.target.pos, self.hidden_cost)
+        self.goal = self.goals[np.argmin(goals_costs)]
 
-        
-        # self.goal.COLOR = Color.blue
+
+    def generate_base_grid(self, size, cell_size=1):
+
+        def unfill(grid, coord, size, cell_size):
+            x1 = np.clip(coord[0], 1, size-1)
+            x2 = np.clip(x1+cell_size, 1, size-1)
+            y1 = np.clip(coord[1], 1, size-1)
+            y2 = np.clip(y1+cell_size, 1, size-1)
+            grid[x1:x2, y1:y2] = 0
+            return grid
+
+        grid = np.ones((size, size), dtype=int)
+
+        #Choose 2 random points
+        start = np.random.randint(0, size//cell_size, 2)
+        grid = unfill(grid, start, size, cell_size)
+        explored = {tuple(start): 1}
+        queue = get_neighbours(start, size, cell_size)
+
+        while len(queue)>0:
+            
+            # idx = random.randint(0, len(queue)-1)
+            idx = 3 if len(queue)>3 else 0
+            cell = queue[idx]
+            explored[tuple(cell)] = 1
+            neighbours = get_neighbours(cell, size, cell_size)
+            filled_neighbours = [neighbour for neighbour in neighbours 
+                                if grid[tuple(neighbour)] == 1]
+
+            # The cell doesn't have 2 explored neighbours
+            if ((cell_size==1) and (len(filled_neighbours) > 2) or (cell_size==2) and (len(filled_neighbours) > 2)):
+                # grid[tuple(cell)] = 0
+                grid = unfill(grid, cell, size, cell_size)
+                queue += [neighbour for neighbour in filled_neighbours
+                        if tuple(neighbour) not in explored]
+                
+            queue.pop(idx)
+            # Change the cell size randomly
+            cell_size = random.randint(1, 2) if cell[0]%2==0 and cell[1]%2==0 else 1
+
+        return grid
+    
+    def position_agents(self, grid, init_sep, size):
+        # Search for a random position where all the cells are unfilled in a initial_separation distance
+
+        while True:
+            #  np.where(grid == 0)
+            row, col = np.where(grid == 0)
+            idx = random.randint(0, len(row)-1)
+            x, y = row[idx], col[idx]
+
+            # Check if the col or row is empty
+            if y+init_sep < size and (np.sum(grid[x, y:y+init_sep+1]) == 0):
+                return (x, y+init_sep), (x, y), Direction.up, Direction.down 
+            elif x+init_sep < size and (np.sum(grid[x:x+init_sep+1, y]) == 0):
+                return (x+init_sep, y), (x, y), Direction.left, Direction.down
+            elif y-init_sep >= 0 and (np.sum(grid[x, y-init_sep:y]) == 0):
+                return (x, y-init_sep), (x, y), Direction.down, Direction.down
+            elif x-init_sep >= 0 and (np.sum(grid[x-init_sep:x, y]) == 0):
+                return (x-init_sep, y), (x, y), Direction.right, Direction.down
 
     def _gen_grid(self, width, height):
         """
@@ -335,7 +309,7 @@ class GREnv(MultiGridEnv):
         """
         # Create an empty grid
         if self.base_grid is None:
-            self.base_grid = generate_base_grid(width)
+            self.base_grid = self.generate_base_grid(width)
             
         width, height = self.base_grid.shape
         self.grid = Grid(width, height)
@@ -343,10 +317,9 @@ class GREnv(MultiGridEnv):
         rows, cols = np.where(self.base_grid==1)
         self.grid.state[rows, cols] = Wall()
 
-        
         # Place the agent
         if self.agents_start_pos is None and self.agents_start_dir is None:
-            observer_pos, target_pos, observer_dir, target_dir = position_agents(self.base_grid, 4, width)
+            observer_pos, target_pos, observer_dir, target_dir = self.position_agents(self.base_grid, 4, width)
             self.agents_start_pos = [observer_pos, target_pos]
             self.agents_start_dir = [observer_dir, target_dir]
 
@@ -355,11 +328,8 @@ class GREnv(MultiGridEnv):
                 agent.state.pos = self.agents_start_pos[i]
                 agent.state.dir = self.agents_start_dir[i]
 
-        if not self.goals:
-            self._gen_goals(self.num_goals)
-
-        goals_costs = get_cost(self.base_grid, self.goals, self.target.pos)
-        self.goal = self.goals[np.argmin(goals_costs)]
+        # Generate Goals
+        self._gen_goals(self.num_goals)
 
     def mod_obs(self, obs):
         # Pursuer
@@ -374,15 +344,33 @@ class GREnv(MultiGridEnv):
         mod_observations.append({"fov": obs[1]["image"], "grid": self.grid.state, 
                                  "pos": self.target.pos, "dir": self.target.dir})
         return mod_observations
+    
+    def is_success(self, fwd_obj, agent):
+        if fwd_obj is None:
+            return True if agent.reported_goal == self.goal else False
+        else:
+            return fwd_obj.type == Type.goal
+        
+    def on_success(self, agent, rewards, terminations):
+        super().on_success(agent, rewards, terminations)
+        self.mission = f"{agent.name} Success"
+        print('\t' + self.mission)
+
+    def on_failure(self, agent, rewards, terminations):
+        super().on_success(agent, rewards, terminations)
+        self.mission = f"{agent.name} Failure"
+        print('\t' + self.mission)
 
     def is_done(self):
         """
         Check if the episode is done
         """
 
-        base_done = super().is_done()
-        done = self.target.pos == self.goal or self.agent_states.terminated[0]# self.observer.pos == self.goal
+        # base_done = super().is_done()
+        # done = self.target.pos == self.goal or self.agent_states.terminated[0]# self.observer.pos == self.goal
 
+        truncated = self.step_count >= self.max_steps
+        done = truncated or any(self.agent_states.terminated)
         return done
     
     def step(self, actions):
