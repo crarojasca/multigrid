@@ -187,7 +187,7 @@ class GREnv(MultiGridEnv):
 
         self.enable_hidden_cost = enable_hidden_cost
         if self.enable_hidden_cost and hidden_cost is None:
-            self.hidden_cost = (np.random.random((size, size)) > 0.5).astype(int)
+            self.hidden_cost = np.random.random((size, size)) 
         elif self.enable_hidden_cost and hidden_cost is not None:
             self.hidden_cost = hidden_cost
         else:
@@ -294,13 +294,13 @@ class GREnv(MultiGridEnv):
             x, y = row[idx], col[idx]
 
             # Check if the col or row is empty
-            if y+init_sep < size and (np.sum(grid[x, y:y+init_sep+1]) == 0):
+            if y+init_sep < size :
                 return (x, y+init_sep), (x, y), Direction.up, Direction.down 
-            elif x+init_sep < size and (np.sum(grid[x:x+init_sep+1, y]) == 0):
+            elif x+init_sep < size:
                 return (x+init_sep, y), (x, y), Direction.left, Direction.down
-            elif y-init_sep >= 0 and (np.sum(grid[x, y-init_sep:y]) == 0):
+            elif y-init_sep >= 0 :
                 return (x, y-init_sep), (x, y), Direction.down, Direction.down
-            elif x-init_sep >= 0 and (np.sum(grid[x-init_sep:x, y]) == 0):
+            elif x-init_sep >= 0 :
                 return (x-init_sep, y), (x, y), Direction.right, Direction.down
 
     def _gen_grid(self, width, height):
@@ -319,7 +319,7 @@ class GREnv(MultiGridEnv):
 
         # Place the agent
         if self.agents_start_pos is None and self.agents_start_dir is None:
-            observer_pos, target_pos, observer_dir, target_dir = self.position_agents(self.base_grid, 4, width)
+            observer_pos, target_pos, observer_dir, target_dir = self.position_agents(self.base_grid, 10, width)
             self.agents_start_pos = [observer_pos, target_pos]
             self.agents_start_dir = [observer_dir, target_dir]
 
