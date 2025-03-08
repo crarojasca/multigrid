@@ -177,22 +177,16 @@ class GREnv(MultiGridEnv):
             See :attr:`multigrid.base.MultiGridEnv.__init__`
         """
 
+        self.size = size
         if base_grid is not None:
-            size = base_grid.shape[0]
+            self.size = base_grid.shape[0]
 
         self.agents_start_pos = None
         self.agents_start_dir = None
         self.base_grid = base_grid
         self.num_goals = num_goals
-
         self.enable_hidden_cost = enable_hidden_cost
-        if self.enable_hidden_cost and hidden_cost is None:
-            self.hidden_cost = (np.random.random((size, size)) > 0.5).astype(int)
-        elif self.enable_hidden_cost and hidden_cost is not None:
-            self.hidden_cost = hidden_cost
-        else:
-            self.hidden_cost = np.zeros((size, size))
-
+        self.hidden_cost = hidden_cost
         self.goals = []
         self.goal = None
         if goals is not None:
@@ -200,9 +194,9 @@ class GREnv(MultiGridEnv):
 
         super().__init__(
             mission_space="Predict the goal and arrive before the target",
-            grid_size=size,
+            grid_size=self.size,
             agents=2,
-            max_steps=max_steps or (4 * size**2),
+            max_steps=max_steps or (4 * self.size**2),
             joint_reward=joint_reward,
             success_termination_mode=success_termination_mode,
             **kwargs,
@@ -217,6 +211,14 @@ class GREnv(MultiGridEnv):
         """
         Reset the environment
         """
+
+        
+        if self.enable_hidden_cost and self.hidden_cost is None:
+            self.hidden_cost = (np.random.random((self.size, self.size)))
+        elif self.enable_hidden_cost and self.hidden_cost is not None:
+            self.hidden_cost = self.hidden_cost
+        else:
+            self.hidden_cost = np.zeros((self.size, self.size))
 
         obs, info = super().reset()
         obs = self.mod_obs(obs)
