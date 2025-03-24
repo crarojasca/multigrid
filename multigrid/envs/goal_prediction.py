@@ -7,6 +7,7 @@ from multigrid.core.constants import Direction, Color, IDX_TO_COLOR, Type
 from multigrid.core.world_object import Goal, Wall
 
 from typing import SupportsFloat
+from scipy.ndimage import distance_transform_edt
 
 import random
 import pygame
@@ -155,7 +156,7 @@ class GREnv(MultiGridEnv):
         max_steps: int | None = None,
         joint_reward: bool = False,
         success_termination_mode: str = 'any',
-        hidden_cost=None, enable_hidden_cost=False,
+        hidden_cost=None, hidden_cost_type=None,
         **kwargs):
         """
         Parameters
@@ -185,7 +186,7 @@ class GREnv(MultiGridEnv):
         self.agents_start_dir = None
         self.base_grid = base_grid
         self.num_goals = num_goals
-        self.enable_hidden_cost = enable_hidden_cost
+        self.hidden_cost_type = hidden_cost_type
         self.hidden_cost = hidden_cost
         self.goals = []
         self.goal = None
@@ -212,16 +213,29 @@ class GREnv(MultiGridEnv):
         Reset the environment
         """
 
-        
-        if self.enable_hidden_cost and self.hidden_cost is None:
-            self.hidden_cost = (np.random.random((self.size, self.size)))
-        elif self.enable_hidden_cost and self.hidden_cost is not None:
+        obs, info = super().reset()
+        obs = self.mod_obs(obs)
+
+        if self.hidden_cost is not None:
             self.hidden_cost = self.hidden_cost
+
+        elif self.hidden_cost_type is not None:
+            if self.hidden_cost_type=="distance":
+                self.hidden_cost = 1 - (distance_transform_edt(~self.base_grid.astype(bool)) / self.size)
+                # Save cost image
+                # import matplotlib.pyplot as plt
+                # plt.imshow(self.hidden_cost)
+                # plt.savefig("cost.png")
+            elif self.hidden_cost_type=="random":
+                self.hidden_cost = (np.random.random((self.size, self.size)))
+            else:
+                raise ValueError("Invalid hidden cost type")
+            
         else:
             self.hidden_cost = np.zeros((self.size, self.size))
 
-        obs, info = super().reset()
-        obs = self.mod_obs(obs)
+        # Generate Goals
+        self._gen_goals(self.num_goals)
         
         return obs, info
 
@@ -329,9 +343,6 @@ class GREnv(MultiGridEnv):
             if self.agents_start_pos is not None and self.agents_start_dir is not None:
                 agent.state.pos = self.agents_start_pos[i]
                 agent.state.dir = self.agents_start_dir[i]
-
-        # Generate Goals
-        self._gen_goals(self.num_goals)
 
     def mod_obs(self, obs):
         # Pursuer
