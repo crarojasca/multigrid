@@ -155,7 +155,7 @@ class GREnv(MultiGridEnv):
         max_steps: int | None = None,
         joint_reward: bool = False,
         success_termination_mode: str = 'any',
-        hidden_cost=None, enable_hidden_cost=False,
+        hidden_cost=None, enable_hidden_cost=False, initial_distance=3,
         **kwargs):
         """
         Parameters
@@ -184,6 +184,7 @@ class GREnv(MultiGridEnv):
         self.agents_start_dir = None
         self.base_grid = base_grid
         self.num_goals = num_goals
+        self.initial_distance = initial_distance
 
         self.enable_hidden_cost = enable_hidden_cost
         if self.enable_hidden_cost and hidden_cost is None:
@@ -203,6 +204,7 @@ class GREnv(MultiGridEnv):
             grid_size=size,
             agents=2,
             max_steps=max_steps or (4 * size**2),
+            see_through_walls=[False, False],
             joint_reward=joint_reward,
             success_termination_mode=success_termination_mode,
             **kwargs,
@@ -319,7 +321,7 @@ class GREnv(MultiGridEnv):
 
         # Place the agent
         if self.agents_start_pos is None and self.agents_start_dir is None:
-            observer_pos, target_pos, observer_dir, target_dir = self.position_agents(self.base_grid, 10, width)
+            observer_pos, target_pos, observer_dir, target_dir = self.position_agents(self.base_grid, self.initial_distance, width)
             self.agents_start_pos = [observer_pos, target_pos]
             self.agents_start_dir = [observer_dir, target_dir]
 

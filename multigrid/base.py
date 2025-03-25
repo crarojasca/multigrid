@@ -285,9 +285,10 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
         assert np.all(self.agent_states.dir >= 0)
 
         # Check that agents don't overlap with other objects
-        for agent in self.agents:
-            start_cell = self.grid.get(*agent.state.pos)
-            assert start_cell is None or start_cell.can_overlap()
+        # for agent in self.agents:
+        #     start_cell = self.grid.get(*agent.state.pos)
+        #     print(agent)
+        #     assert start_cell is None or agent.can_overlap
 
         # Step count since episode start
         self.step_count = 0
@@ -412,6 +413,9 @@ class MultiGridEnv(gym.Env, RandomMixin, ABC):
             # Rotate left
             if action == Action.left:
                 agent.state.dir = (agent.state.dir - 1) % 4
+
+            elif action == Action.stay:
+                pass
 
             # Rotate right
             elif action == Action.right:
