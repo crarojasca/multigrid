@@ -151,6 +151,8 @@ class GREnv(MultiGridEnv):
         self,
         size: int | None = 8,
         base_grid: np.array | None = None,
+        agents_start_pos: list[tuple[int, int]] | None = None,
+        agents_start_dir: list[Direction] | None = None,
         goals: list[tuple[int, int]] | None = None,
         num_goals: int = 3,
         max_steps: int | None = None,
@@ -182,8 +184,8 @@ class GREnv(MultiGridEnv):
         if base_grid is not None:
             self.size = base_grid.shape[0]
 
-        self.agents_start_pos = None
-        self.agents_start_dir = None
+        self.agents_start_pos = agents_start_pos
+        self.agents_start_dir = agents_start_dir
         self.base_grid = base_grid
         self.num_goals = num_goals
         self.hidden_cost_type = hidden_cost_type
